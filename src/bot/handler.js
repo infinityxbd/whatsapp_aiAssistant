@@ -43,26 +43,35 @@ function addToHistory(chatId, role, text) {
 }
 
 async function sendMessage(chatId, text, message, client) {
-  // Method 1: Explicit quoted reply using chat.sendMessage with quotedMessageId
+  // Method 1: client.sendMessage with quotedMessageId (most reliable)
   try {
-    const chat = await client.getChatById(chatId);
-    const msgId = message.id._serialized || message.id;
-    await chat.sendMessage(text, { quotedMessageId: msgId });
+    const msgId = message.id._serialized || message.id.id || message.id;
+    await client.sendMessage(chatId, text, { quotedMessageId: msgId });
     return true;
   } catch (e1) {
-    // Method 2: message.reply() fallback
+    console.log(`⚠️ Quote method 1 failed: ${e1.message}`);
+    // Method 2: chat.sendMessage with quotedMessageId
     try {
-      await message.reply(text);
+      const chat = await client.getChatById(chatId);
+      const msgId = message.id._serialized || message.id.id || message.id;
+      await chat.sendMessage(text, { quotedMessageId: msgId });
       return true;
     } catch (e2) {
-      // Method 3: Plain message as last resort
+      console.log(`⚠️ Quote method 2 failed: ${e2.message}`);
+      // Method 3: message.reply() fallback
       try {
-        const chat = await client.getChatById(chatId);
-        await chat.sendMessage(text);
+        await message.reply(text);
         return true;
       } catch (e3) {
-        console.error(`❌ Send failed: ${e3.message}`);
-        return false;
+        // Method 4: Plain message as last resort
+        try {
+          const chat = await client.getChatById(chatId);
+          await chat.sendMessage(text);
+          return true;
+        } catch (e4) {
+          console.error(`❌ Send failed: ${e4.message}`);
+          return false;
+        }
       }
     }
   }
@@ -134,6 +143,7 @@ async function handleMessage(message, client) {
 
     console.log(`💬 [${formatTime()}] ${isGroup ? 'Group' : 'Inbox'}: ${chatId}`);
     console.log(`📨 "${userMsg}"`);
+    console.log(`🔖 MsgID: ${JSON.stringify(message.id)}`);
 
     if (isGroup) {
       // ─── GROUP: Instant reply (1-2 sec) ───

@@ -419,11 +419,8 @@
       <a class="nav-link" data-tab="replies" onclick="switchTab('replies', this)">
         <span class="icon">💬</span><span>Reply Settings</span>
       </a>
-      <a class="nav-link" data-tab="keys" onclick="switchTab('keys', this)">
-        <span class="icon">🔑</span><span>API Keys</span>
-      </a>
       <a class="nav-link" data-tab="aiapis" onclick="switchTab('aiapis', this)">
-        <span class="icon">🤖</span><span>AI API Manager</span>
+        <span class="icon">🔑</span><span>AI API Manager</span>
       </a>
       <a class="nav-link" data-tab="fallback" onclick="switchTab('fallback', this)">
         <span class="icon">💬</span><span>Fallback Messages</span>
@@ -442,6 +439,9 @@
       </a>
     </div>
     <div class="nav-bottom">
+      <a class="nav-link" onclick="window.location.reload(true)" style="color:#8b949e;">
+        <span class="icon">🔄</span><span>Refresh</span>
+      </a>
       <a class="nav-link logout" onclick="logout()">
         <span class="icon">🚪</span><span>Logout</span>
       </a>
@@ -508,30 +508,9 @@
       </div>
     </div>
 
-    <!-- Tab: API Keys -->
-    <div class="tab" id="tab-keys">
-      <div class="section-header"><span class="icon">🔑</span> API Keys</div>
-      <div class="info-banner">
-        Add multiple keys for automatic fallback. Keys are tried in order — if one fails, the next is used. Click <b>Check All</b> to test which keys work.
-      </div>
-      <div class="header-row">
-        <button class="btn btn-outline btn-sm" onclick="checkAllKeys()" id="checkAllBtn">🔍 Check All Keys</button>
-        <button class="btn btn-primary btn-sm" onclick="showModal()">+ Add New Key</button>
-      </div>
-      <div class="table-wrapper">
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Model</th><th>API Key</th><th>Status</th><th>Actions</th></tr>
-          </thead>
-          <tbody id="keysTable"></tbody>
-        </table>
-        <div class="empty-state" id="keysEmpty">No API keys added yet. Add your first Gemini API key to get started.</div>
-      </div>
-    </div>
-
     <!-- Tab: AI API Manager -->
     <div class="tab" id="tab-aiapis">
-      <div class="section-header"><span class="icon">🤖</span> AI API Manager</div>
+      <div class="section-header"><span class="icon">🔑</span> AI API Manager</div>
       <div class="info-banner">
         Manage multiple AI providers with automatic fallback. APIs are tried in priority order — if one fails, the next is used automatically.
       </div>
@@ -780,25 +759,6 @@
     </div>
   </div>
 
-  <div class="modal-overlay" id="addKeyModal">
-    <div class="modal">
-      <h3>Add API Key</h3>
-      <label>Key Name</label>
-      <input type="text" id="keyName" placeholder="e.g. Gemini Key 1">
-      <label>API Key</label>
-      <input type="text" id="keyValue" placeholder="AIzaSy...">
-      <label>Endpoint URL</label>
-      <input type="text" id="keyEndpoint" value="https://generativelanguage.googleapis.com">
-      <label>Model Name</label>
-      <input type="text" id="keyModel" value="gemini-1.5-flash">
-      <div class="helper">Common models: gemini-1.5-flash, gemini-1.5-pro, gemini-pro</div>
-      <div class="modal-actions">
-        <button class="btn btn-outline" onclick="hideModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="addKey()">Add Key</button>
-      </div>
-    </div>
-  </div>
-
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
@@ -818,7 +778,6 @@
       document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
       document.getElementById('tab-' + tab).classList.add('active');
       el.classList.add('active');
-      if (tab === 'keys') loadKeys();
       if (tab === 'blocklist') loadBlocklist();
       if (tab === 'whatsapp') checkWhatsAppStatus();
       if (tab === 'adminusers') loadAdminUsers();
@@ -1070,109 +1029,6 @@
         });
         showToast('Reply settings updated!');
       } catch(e) { showToast('Failed to update', 'error'); }
-    }
-
-    // API Keys
-    let keyHealthStatus = {};
-
-    async function checkAllKeys() {
-      const btn = document.getElementById('checkAllBtn');
-      btn.textContent = '⏳ Checking...';
-      btn.disabled = true;
-      try {
-        const res = await fetch('/admin/api/keys/check', { credentials: 'same-origin' });
-        const results = await res.json();
-        results.forEach(r => { keyHealthStatus[r.id] = r; });
-        showToast('Key check complete!');
-        loadKeys();
-      } catch(e) {
-        showToast('Failed to check keys', 'error');
-      }
-      btn.textContent = '🔍 Check All Keys';
-      btn.disabled = false;
-    }
-
-    async function loadKeys() {
-      try {
-        const res = await fetch('/admin/api/keys', { credentials: 'same-origin' });
-        const keys = await res.json();
-        const tbody = document.getElementById('keysTable');
-        const empty = document.getElementById('keysEmpty');
-        if (keys.length === 0) {
-          tbody.innerHTML = '';
-          empty.style.display = 'block';
-          return;
-        }
-        empty.style.display = 'none';
-        tbody.innerHTML = keys.map(k => {
-          const health = keyHealthStatus[k.id];
-          let statusBadge = '';
-          let errorMsg = '';
-          if (health) {
-            if (health.status === 'ok') {
-              statusBadge = '<span class="badge badge-ok">✅ Working</span>';
-            } else {
-              statusBadge = '<span class="badge badge-error">❌ Failed</span>';
-              errorMsg = `<div class="key-error-msg">${health.error}</div>`;
-            }
-          } else {
-            statusBadge = k.enabled
-              ? '<span class="badge badge-active">Active</span>'
-              : '<span class="badge badge-disabled">Disabled</span>';
-          }
-          return `<tr>
-            <td><b>${k.name}</b></td>
-            <td>${k.model}</td>
-            <td><code>${k.apiKey}</code></td>
-            <td><div class="status-row">${statusBadge}</div>${errorMsg}</td>
-            <td>
-              <button class="btn btn-outline btn-sm" onclick="toggleKey('${k.id}', ${!k.enabled})">${k.enabled ? 'Disable' : 'Enable'}</button>
-              <button class="btn btn-danger btn-sm" onclick="deleteKey('${k.id}')">Delete</button>
-            </td>
-          </tr>`;
-        }).join('');
-      } catch(e) {}
-    }
-
-    function showModal() { document.getElementById('addKeyModal').classList.add('show'); }
-    function hideModal() { document.getElementById('addKeyModal').classList.remove('show'); }
-
-    async function addKey() {
-      const name = document.getElementById('keyName').value.trim();
-      const apiKey = document.getElementById('keyValue').value.trim();
-      const endpoint = document.getElementById('keyEndpoint').value.trim();
-      const model = document.getElementById('keyModel').value.trim();
-      if (!name || !apiKey) return showToast('Name and API key are required', 'error');
-      try {
-        await fetch('/admin/api/keys', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, apiKey, endpoint, model })
-        });
-        hideModal();
-        showToast('API key added!');
-        loadKeys();
-        document.getElementById('keyName').value = '';
-        document.getElementById('keyValue').value = '';
-      } catch(e) { showToast('Failed to add key', 'error'); }
-    }
-
-    async function toggleKey(id, enabled) {
-      await fetch(`/admin/api/keys/${id}`, {
-        method: 'PATCH',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled })
-      });
-      loadKeys();
-    }
-
-    async function deleteKey(id) {
-      if (!confirm('Delete this API key?')) return;
-      await fetch(`/admin/api/keys/${id}`, { method: 'DELETE', credentials: 'same-origin' });
-      showToast('Key deleted');
-      loadKeys();
     }
 
     // Blocklist
