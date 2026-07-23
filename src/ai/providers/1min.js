@@ -18,11 +18,28 @@ class OneMinProvider extends BaseProvider {
   async sendRequest(messages) {
     const lastMsg = messages[messages.length - 1]?.content || '';
 
+    // Build prompt with system prompt + conversation context
+    let fullPrompt = '';
+    if (this.systemPrompt) {
+      fullPrompt += `[System Instruction: ${this.systemPrompt}]\n\n`;
+    }
+    // Add conversation history as context
+    if (messages.length > 1) {
+      const history = messages.slice(0, -1);
+      for (const m of history) {
+        const role = m.role === 'assistant' ? 'Assistant' : 'User';
+        fullPrompt += `${role}: ${m.content}\n`;
+      }
+      fullPrompt += `\nUser: ${lastMsg}`;
+    } else {
+      fullPrompt += lastMsg;
+    }
+
     const body = {
       type: 'UNIFY_CHAT_WITH_AI',
       model: this.model || 'gpt-4o-mini',
       promptObject: {
-        prompt: lastMsg,
+        prompt: fullPrompt,
         settings: {
           historySettings: { isMixed: false, historyMessageLimit: 10 }
         }
