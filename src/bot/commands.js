@@ -365,8 +365,13 @@ async function handleCommand(message, client, botWid, lidMap, commandSenderId) {
       const { execSync } = require('child_process');
       const cwd = require('path').join(__dirname, '..', '..');
       try {
-        execSync('git pull origin main', { cwd, timeout: 30000 });
-        await reply(message, '📦 Installing dependencies...', client);
+        const pullOutput = execSync('git pull origin main', { cwd, timeout: 30000, encoding: 'utf-8' });
+        if (pullOutput.includes('Already up to date') || pullOutput.includes('Already up-to-date')) {
+          await reply(message, '✅ Bot is already up to date! No update available.', client);
+          console.log('✅ /update: no update available');
+          return true;
+        }
+        await reply(message, '📦 New update found! Installing dependencies...', client);
         execSync('npm install --production', { cwd, timeout: 60000 });
         await reply(message, '✅ Update complete! Restarting...', client);
         console.log('✅ /update complete, restarting...');

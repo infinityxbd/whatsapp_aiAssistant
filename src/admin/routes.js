@@ -783,7 +783,11 @@ function createRoutes(botState, client) {
       const cwd = path.join(__dirname, '..', '..');
       try {
         console.log('📥 git pull...');
-        execSync('git pull origin main', { cwd, timeout: 30000 });
+        const pullOutput = execSync('git pull origin main', { cwd, timeout: 30000, encoding: 'utf-8' });
+        if (pullOutput.includes('Already up to date') || pullOutput.includes('Already up-to-date')) {
+          console.log('✅ No update available');
+          return;
+        }
         console.log('📦 npm install...');
         execSync('npm install --production', { cwd, timeout: 60000 });
         console.log('✅ Update complete. Restarting...');
