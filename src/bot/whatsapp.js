@@ -230,6 +230,42 @@ client.on('ready', async () => {
   // Pre-populate LID map from contacts
   try { await prepopulateLidMap(); } catch (e) {}
 
+  // Resolve botWid to phone if it's a LID
+  const botDigits = botWid.replace(/\D/g, '');
+  if (botWid.includes('@lid') || (botState.lidMap[botDigits] && !botWid.includes('@c.us'))) {
+    const resolved = botState.lidMap[botDigits];
+    if (resolved) {
+      botState.botWid = resolved + '@c.us';
+      console.log(`🔍 botWid resolved: ${botWid} → ${botState.botWid}`);
+    }
+  }
+
+  // Periodic cache auto-clean every 30 min
+  if (global._cacheCleanInterval) clearInterval(global._cacheCleanInterval);
+  global._cacheCleanInterval = setInterval(() => {
+    try {
+      const fs = require('fs');
+      const p = require('path');
+      const cacheDir = p.join(__dirname, '..', '..', '.wwebjs_cache');
+      if (fs.existsSync(cacheDir)) { fs.rmSync(cacheDir, { recursive: true, force: true }); }
+      const sessionDir = p.join(__dirname, '..', '..', '.wwebjs_auth', 'session');
+      if (fs.existsSync(sessionDir)) {
+        for (const folder of ['Cache', 'Code Cache', 'GPUCache', 'Service Worker', 'Blob_storage']) {
+          const fp = p.join(sessionDir, folder);
+          if (fs.existsSync(fp)) { try { fs.rmSync(fp, { recursive: true, force: true }); } catch (e) {} }
+        }
+        const defaultDir = p.join(sessionDir, 'Default');
+        if (fs.existsSync(defaultDir)) {
+          for (const folder of ['Cache', 'Code Cache', 'GPUCache', 'Service Worker', 'Blob_storage']) {
+            const fp = p.join(defaultDir, folder);
+            if (fs.existsSync(fp)) { try { fs.rmSync(fp, { recursive: true, force: true }); } catch (e) {} }
+          }
+        }
+      }
+      console.log('🧹 Auto cache clean done');
+    } catch (e) {}
+  }, 30 * 60 * 1000);
+
   if (onlineInterval) clearInterval(onlineInterval);
   onlineInterval = setInterval(async () => {
     try { await client.sendPresenceAvailable(); } catch (e) {}

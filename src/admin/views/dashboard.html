@@ -1039,7 +1039,7 @@
         try {
           const entry = JSON.parse(e.data);
           logEntries.push(entry);
-          if (logEntries.length > 500) logEntries.shift();
+          if (logEntries.length > 100) logEntries.shift();
           appendLogEntry(entry);
         } catch(err) {}
       };
@@ -1055,7 +1055,7 @@
       const prefix = entry.level === 'error' ? '❌' : entry.level === 'warn' ? '⚠️' : '▸';
       line.textContent = `${entry.time} ${prefix} ${entry.msg}`;
       container.appendChild(line);
-      if (container.children.length > 500) container.removeChild(container.firstChild);
+      if (container.children.length > 100) container.removeChild(container.firstChild);
       container.scrollTop = container.scrollHeight;
       document.getElementById('logCount').textContent = logEntries.length + ' logs';
     }

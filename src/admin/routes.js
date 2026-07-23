@@ -13,7 +13,7 @@ const { requireAuth } = require('./middleware');
 
 // ─── Live Log System ───
 const logBuffer = [];
-const MAX_LOGS = 500;
+const MAX_LOGS = 100;
 const sseClients = new Set();
 const originalLog = console.log;
 const originalError = console.error;

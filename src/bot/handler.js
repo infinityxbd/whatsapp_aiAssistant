@@ -9,6 +9,9 @@ const { handleCommand } = require('./commands');
 
 const MAX_HISTORY = 7;
 const chatHistories = {};
+const processingQueue = new Map();
+const MAX_CONCURRENT = 3;
+let activeCount = 0;
 
 function formatTime() {
   return new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -20,6 +23,19 @@ function sleep(ms) {
 
 function randomBetween(min, max) {
   return Math.floor(Math.random() * (max - min + 1) * 1000) + min * 1000;
+}
+
+// Flood protection: limit concurrent message processing
+async function queueMessage(fn) {
+  while (activeCount >= MAX_CONCURRENT) {
+    await sleep(500);
+  }
+  activeCount++;
+  try {
+    await fn();
+  } finally {
+    activeCount--;
+  }
 }
 
 function isEmojiOnly(text) {
@@ -112,94 +128,78 @@ async function handleMessage(message, client) {
 
     const { botState } = require('./whatsapp');
     const isGroup = message.from.endsWith('@g.us');
-
     const chatCheck = await checkMutedArchived(message.from, client);
-    if (chatCheck) {
-      console.log(`⏭️ Ignored (${chatCheck}): ${message.from}`);
-      return;
-    }
+    if (chatCheck) return;
 
     const commandSenderId = isGroup ? (message.author || message.from) : message.from;
 
+    // Commands always processed (even fromMe) so owner can use /command on own number
     const isCommand = await handleCommand(message, client, botState.botWid, botState.lidMap, commandSenderId);
     if (isCommand) return;
 
+    // Skip own messages for AI replies
     if (message.fromMe) return;
 
-    const config = readJSON('config.json') || {};
-    const blocklist = readJSON('blocklist.json') || { numbers: [], groups: [] };
+    // Flood protection: queue AI reply processing
+    await queueMessage(async () => {
+      const config = readJSON('config.json') || {};
+      const blocklist = readJSON('blocklist.json') || { numbers: [], groups: [] };
 
-    if (isGroup && !config.replyToGroups) return;
-    if (!isGroup && !config.replyToInbox) return;
+      if (isGroup && !config.replyToGroups) return;
+      if (!isGroup && !config.replyToInbox) return;
 
-    if (blocklist.numbers.includes(message.from)) return;
-    if (isGroup && blocklist.groups.includes(message.from)) return;
-    if (config.botEnabled === false) return;
+      if (blocklist.numbers.includes(message.from)) return;
+      if (isGroup && blocklist.groups.includes(message.from)) return;
+      if (config.botEnabled === false) return;
 
-    const chatId = message.from;
-    const userMsg = message.body;
+      const chatId = message.from;
+      const userMsg = message.body;
 
-    // Skip emoji-only messages
-    if (isEmojiOnly(userMsg)) {
-      console.log(`⏭️ Skipped emoji-only: ${chatId}`);
-      return;
-    }
+      // Skip emoji-only messages
+      if (isEmojiOnly(userMsg)) return;
 
-    console.log(`💬 [${formatTime()}] ${isGroup ? 'Group' : 'Inbox'}: ${chatId}`);
-    console.log(`📨 "${userMsg}"`);
-    console.log(`🔖 MsgID: ${JSON.stringify(message.id)}`);
+      console.log(`💬 [${formatTime()}] ${isGroup ? 'Group' : 'Inbox'}: ${chatId}`);
+      console.log(`📨 "${userMsg}"`);
 
-    if (isGroup) {
-      // ─── GROUP: Instant reply (1-2 sec) ───
-      await sleep(1000 + Math.random() * 1000);
+      if (isGroup) {
+        // GROUP: Instant reply (1-2 sec)
+        await sleep(1000 + Math.random() * 1000);
+        try { await client.sendSeen(chatId); } catch (e) {}
+        addToHistory(chatId, 'user', userMsg);
+        const history = getChatHistory(chatId);
+        const aiResponse = await aiService.generateReply(userMsg, history);
+        console.log(`🤖 Reply: "${aiResponse}"`);
+        addToHistory(chatId, 'model', aiResponse);
+        await sendMessage(chatId, aiResponse, message, client);
+        console.log(`✅ Sent to ${chatId}`);
+      } else {
+        // INBOX: Human-like delay
+        await sleep(randomBetween(1, 3));
+        try { await client.sendSeen(chatId); } catch (e) {}
+        try {
+          await client.pupPage.evaluate((id) => {
+            window.WWebJS.sendChatstate('typing', id);
+            return true;
+          }, chatId);
+        } catch (e) {}
+        await sleep(randomBetween(5, 10));
+        addToHistory(chatId, 'user', userMsg);
+        const history = getChatHistory(chatId);
+        const aiResponse = await aiService.generateReply(userMsg, history);
+        console.log(`🤖 Reply: "${aiResponse}"`);
+        addToHistory(chatId, 'model', aiResponse);
+        try {
+          await client.pupPage.evaluate((id) => {
+            window.WWebJS.sendChatstate('stop', id);
+            return true;
+          }, chatId);
+        } catch (e) {}
+        await sendMessage(chatId, aiResponse, message, client);
+        console.log(`✅ Sent to ${chatId}`);
+      }
 
-      try { await client.sendSeen(chatId); } catch (e) {}
-
-      addToHistory(chatId, 'user', userMsg);
-      const history = getChatHistory(chatId);
-
-      const aiResponse = await aiService.generateReply(userMsg, history);
-      console.log(`🤖 Reply: "${aiResponse}"`);
-
-      addToHistory(chatId, 'model', aiResponse);
-
-      await sendMessage(chatId, aiResponse, message, client);
-      console.log(`✅ Sent to ${chatId}`);
-    } else {
-      // ─── INBOX: Human-like delay (as-is) ───
-      await sleep(randomBetween(1, 3));
-
-      try { await client.sendSeen(chatId); } catch (e) {}
-
-      try {
-        await client.pupPage.evaluate((id) => {
-          window.WWebJS.sendChatstate('typing', id);
-          return true;
-        }, chatId);
-      } catch (e) {}
-
-      await sleep(randomBetween(5, 10));
-
-      addToHistory(chatId, 'user', userMsg);
-      const history = getChatHistory(chatId);
-
-      const aiResponse = await aiService.generateReply(userMsg, history);
-      console.log(`🤖 Reply: "${aiResponse}"`);
-
-      addToHistory(chatId, 'model', aiResponse);
-
-      try {
-        await client.pupPage.evaluate((id) => {
-          window.WWebJS.sendChatstate('stop', id);
-          return true;
-        }, chatId);
-      } catch (e) {}
-
-      await sendMessage(chatId, aiResponse, message, client);
-      console.log(`✅ Sent to ${chatId}`);
-    }
-
-    try { await client.sendPresenceAvailable(); } catch (e) {}
+      try { await client.sendPresenceAvailable(); } catch (e) {}
+    });
   } catch (error) {
     console.error('❌ Error:', error.message);
   }

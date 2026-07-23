@@ -385,8 +385,8 @@ async function handleCommand(message, client, botWid, lidMap, commandSenderId) {
 
     // ─── Show Logs ───
     case '/log': {
-      const lines = parseInt(param) || 10;
-      const count = Math.min(Math.max(lines, 1), 30);
+      const lines = parseInt(param) || 20;
+      const count = Math.min(Math.max(lines, 1), 50);
       try {
         const fs = require('fs');
         const path = require('path');
