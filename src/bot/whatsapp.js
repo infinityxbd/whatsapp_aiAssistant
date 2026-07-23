@@ -218,12 +218,18 @@ client.on('auth_failure', (msg) => {
 });
 
 client.on('ready', async () => {
-  const wid = client.info.wid;
-  const botWid = wid._serialized || wid;
-  botState.botWid = botWid;
+  // Set online FIRST so admin panel shows correct status immediately
   botState.status = 'online';
   botState.startTime = Date.now();
-  console.log(`🟢 Bot ONLINE! WID: ${botWid}`);
+
+  try {
+    const wid = client.info.wid;
+    const botWid = wid._serialized || wid;
+    botState.botWid = botWid;
+    console.log(`🟢 Bot ONLINE! WID: ${botWid}`);
+  } catch (e) {
+    console.log(`🟢 Bot ONLINE! (WID pending: ${e.message})`);
+  }
 
   try { await client.sendPresenceAvailable(); } catch (e) {}
 
@@ -231,14 +237,17 @@ client.on('ready', async () => {
   try { await prepopulateLidMap(); } catch (e) {}
 
   // Resolve botWid to phone if it's a LID
-  const botDigits = botWid.replace(/\D/g, '');
-  if (botWid.includes('@lid') || (botState.lidMap[botDigits] && !botWid.includes('@c.us'))) {
-    const resolved = botState.lidMap[botDigits];
-    if (resolved) {
-      botState.botWid = resolved + '@c.us';
-      console.log(`🔍 botWid resolved: ${botWid} → ${botState.botWid}`);
+  try {
+    const botWid = botState.botWid || '';
+    const botDigits = botWid.replace(/\D/g, '');
+    if (botWid.includes('@lid') || (botState.lidMap[botDigits] && !botWid.includes('@c.us'))) {
+      const resolved = botState.lidMap[botDigits];
+      if (resolved) {
+        botState.botWid = resolved + '@c.us';
+        console.log(`🔍 botWid resolved: ${botWid} → ${botState.botWid}`);
+      }
     }
-  }
+  } catch (e) {}
 
   // Periodic cache auto-clean every 30 min
   if (global._cacheCleanInterval) clearInterval(global._cacheCleanInterval);
